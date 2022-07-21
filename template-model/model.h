@@ -9,6 +9,23 @@
 #define _model_h
 
 #include "ross.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <ctype.h>
+#include <assert.h>
+
+#define MAX_ROOM_HEIGHT 100
+#define MAX_ROOM_LENGTH 100
+
+#define MAX_COMMENT_LENGTH 1000
+
+struct room {
+	int data[MAX_ROOM_HEIGHT][MAX_ROOM_LENGTH];
+	int height;
+	int length;
+};
+
 
 //Example enumeration of message type... could also use #defines
 typedef enum {
@@ -63,5 +80,8 @@ void model_cutom_mapping(void);
 tw_lp * model_mapping_to_lp(tw_lpid lpid);
 tw_peid model_map(tw_lpid gid);
 */
+
+extern void parse(struct room* storage, char* path);
+
 
 #endif

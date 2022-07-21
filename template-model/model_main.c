@@ -42,6 +42,12 @@ const tw_optdef model_opts[] = {
 #define model_main main
 
 int model_main (int argc, char* argv[]) {
+	
+	char path[] = "input.csv";
+	struct room storage;
+	parse(&storage, path);
+
+
 	int i;
 	int num_lps_per_pe;
 
@@ -81,10 +87,10 @@ int model_main (int argc, char* argv[]) {
 	g_tw_lp_typemap = &model_typemap;
 
 	// set the global variable and initialize each LP's type
-//	g_tw_lp_types = model_lps;
-//	tw_lp_setup_types();
+	//	g_tw_lp_types = model_lps;
+	//	tw_lp_setup_types();
 
-	printf("g_tw_nlp == %d\n", g_tw_nlp);
+	printf("g_tw_nlp == %ld\n", g_tw_nlp);
 	for (int i = 0; i < g_tw_nlp; ++i)
 		tw_lp_settype(i, &model_lps[0]);
 

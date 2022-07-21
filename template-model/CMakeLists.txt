@@ -19,6 +19,7 @@ SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_BINARY_DIR}/model_config.h PROPERTIE
 SET(model_srcs
 	model_main.c
 	model_driver.c
+	model_parser.c
 	model_map.c
 	model.h
 	model_config.h

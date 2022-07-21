@@ -18,7 +18,6 @@ void SWAP (double *a, double *b) {
   *b = tmp;
 }
 
-
 //Init function
 // - called once for each LP
 // ! LP can only send messages to itself during init !
