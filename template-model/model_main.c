@@ -8,8 +8,6 @@
 #include "ross.h"
 #include "model.h"
 
-#define N_LPS 10
-
 // Define LP types
 //   these are the functions called by ROSS for each LP
 //   multiple sets can be defined (for multiple LP types)
@@ -32,9 +30,9 @@ unsigned int setting_1 = 0;
 
 //add your command line opts
 const tw_optdef model_opts[] = {
-	TWOPT_GROUP("ROSS Model"),
-	TWOPT_UINT("setting_1", setting_1, "first setting for this model"),
-	TWOPT_END(),
+    TWOPT_GROUP("ROSS Model"),
+    TWOPT_UINT("setting_1", setting_1, "first setting for this model"),
+    TWOPT_END(),
 };
 
 
@@ -42,63 +40,66 @@ const tw_optdef model_opts[] = {
 #define model_main main
 
 int model_main (int argc, char* argv[]) {
-	
-	char path[] = "input.csv";
-	struct room storage;
-	parse(&storage, path);
+    char path[] = "input.csv";
+    parse(path);
 
+    RobotsInit();
+    assert(Robots.N);
 
-	int i;
-	int num_lps_per_pe;
+    PrintMap();
+    RobotsPrint(); 
 
-	tw_opt_add(model_opts);
-	tw_init(&argc, &argv);
+    int i;
+    int num_lps_per_pe;
 
-	//Do some error checking?
-	//Print out some settings?
+    tw_opt_add(model_opts);
+    tw_init(&argc, &argv);
 
-	//Custom Mapping
-	/*
-	g_tw_mapping = CUSTOM;
-	g_tw_custom_initial_mapping = &model_custom_mapping;
-	g_tw_custom_lp_global_to_local_map = &model_mapping_to_lp;
-	*/
+    //Do some error checking?
+    //Print out some settings?
 
-	//Useful ROSS variables and functions
-	// tw_nnodes() : number of nodes/processors defined
-	// g_tw_mynode : my node/processor id (mpi rank)
+    //Custom Mapping
+    /*
+    g_tw_mapping = CUSTOM;
+    g_tw_custom_initial_mapping = &model_custom_mapping;
+    g_tw_custom_lp_global_to_local_map = &model_mapping_to_lp;
+    */
 
-	//Useful ROSS variables (set from command line)
-	// g_tw_events_per_pe
-	// g_tw_lookahead
-	// g_tw_nlp
-	// g_tw_nkp
-	// g_tw_synchronization_protocol
+    //Useful ROSS variables and functions
+    // tw_nnodes() : number of nodes/processors defined
+    // g_tw_mynode : my node/processor id (mpi rank)
 
-	//assume 1 lp per node
-	num_lps_per_pe = N_LPS;
+    //Useful ROSS variables (set from command line)
+    // g_tw_events_per_pe
+    // g_tw_lookahead
+    // g_tw_nlp
+    // g_tw_nkp
+    // g_tw_synchronization_protocol
 
-	//set up LPs within ROSS
-	tw_define_lps(num_lps_per_pe, sizeof(message));
-	// note that g_tw_nlp gets set here by tw_define_lps
+    //assume 1 lp per node
+    num_lps_per_pe = Robots.N + 1; //n robots + command center
 
-	// IF there are multiple LP types
-	//    you should define the mapping of GID -> lptype index
-	g_tw_lp_typemap = &model_typemap;
+    //set up LPs within ROSS
+    tw_define_lps(num_lps_per_pe, sizeof(message));
+    // note that g_tw_nlp gets set here by tw_define_lps
 
-	// set the global variable and initialize each LP's type
-	//	g_tw_lp_types = model_lps;
-	//	tw_lp_setup_types();
+    // IF there are multiple LP types
+    //    you should define the mapping of GID -> lptype index
+    g_tw_lp_typemap = &model_typemap;
 
-	printf("g_tw_nlp == %ld\n", g_tw_nlp);
-	for (int i = 0; i < g_tw_nlp; ++i)
-		tw_lp_settype(i, &model_lps[0]);
+    // set the global variable and initialize each LP's type
+    //  g_tw_lp_types = model_lps;
+    //  tw_lp_setup_types();
 
-	// Do some file I/O here? on a per-node (not per-LP) basis
+    //printf("g_tw_nlp == %ld\n", g_tw_nlp);
+    for (int i = 0; i < g_tw_nlp; ++i)
+        tw_lp_settype(i, &model_lps[0]);
 
-	tw_run();
+    // Do some file I/O here? on a per-node (not per-LP) basis
 
-	tw_end();
+    tw_run();
 
-	return 0;
+    tw_end();
+
+    return 0;
 }

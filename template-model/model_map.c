@@ -21,7 +21,7 @@ tw_peid model_map(tw_lpid gid){
 tw_lpid model_typemap (tw_lpid gid) {
   // since this model has one type
   // always return index of 1st LP type
-  return gid % 2;
+  return gid == 0; //gid == 0 command center, gid != 0 robot
 }
 
 

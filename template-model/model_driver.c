@@ -18,86 +18,232 @@ void SWAP (double *a, double *b) {
   *b = tmp;
 }
 
+int dest = 1;
+
 //Init function
 // - called once for each LP
 // ! LP can only send messages to itself during init !
 void model_init (state *s, tw_lp *lp) {
-  if (lp->gid % 2 == 0) {
-	s->type = HELLO_;
-	printf("HELLO is initialized | ");
-  } else if (lp->gid % 2 == 1) {
-	s->type = GOODBYE_;
-	printf("GOODBYE is initialized | ");
+  if (lp->gid == 0) { //same as mapping (check)
+    s->type = COMMAND_CENTER;
+    printf("COMMAND_CENTER is initialized\n");
+  } else {
+    s->type = ROBOT;
+    assert(lp->gid <= Robots.N);
+    
+    s->x         = Robots.data[lp->gid - 1].x;
+    s->y         = Robots.data[lp->gid - 1].y;
+    s->is_facing = Robots.data[lp->gid - 1].is_facing;
+    
+    printf("ROBOT #%ld is initialized\n", lp->gid);
   }
+
   int self = lp->gid;
 
   // init state data
-  s->rcvd_count_H = 0;
-  s->rcvd_count_G = 0;
   s->value = -1;
 
+  s->got_msgs_ROTATE_LEFT   = 0;
+  s->got_msgs_ROTATE_RIGHT  = 0;
+  s->got_msgs_MOVE          = 0;
+  s->got_msgs_BOX_GRAB      = 0;
+  s->got_msgs_BOX_DROP      = 0;
+  s->got_msgs_RECEIVED      = 0;
+  s->got_msgs_EXECUTED      = 0;
+  s->got_msgs_INIT          = 0;
+
+  s->sent_msgs_ROTATE_LEFT  = 0;
+  s->sent_msgs_ROTATE_RIGHT = 0;
+  s->sent_msgs_MOVE         = 0;
+  s->sent_msgs_BOX_GRAB     = 0;
+  s->sent_msgs_BOX_DROP     = 0;
+  s->sent_msgs_RECEIVED     = 0;
+  s->sent_msgs_EXECUTED     = 0;
+  s->sent_msgs_INIT         = 0;
+
   // Init message to myself
-  tw_event *e = tw_event_new(self, 1, lp);
-  message *msg = tw_event_data(e);
+  tw_event* e = tw_event_new(self, 1, lp);
+  message* msg = tw_event_data(e);
   switch(s->type)
   {
-  	case HELLO:
-		msg->type = HELLO_;
-		break;
-  	case GOODBYE:
-		msg->type = GOODBYE_;
-		break;
-	default:
-		printf("Invalid s->type = %d\n", s->type);
+    case COMMAND_CENTER:
+        msg->type = INIT;
+        break;
+    case ROBOT:
+        msg->type = INIT;
+        break;
+    default:
+        printf("Invalid s->type = %d\n", s->type);
   }
   msg->contents = tw_rand_unif(lp->rng);
   msg->sender = self;
   tw_event_send(e);
+  ++s->sent_msgs_INIT; 
 }
 
 //Forward event handler
-void model_event (state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
+void model_event (state* s, tw_bf* bf, message* in_msg, tw_lp* lp) {
   int self = lp->gid;
-
+  boolean is_executed = FALSE;
   // initialize the bit field
-  *(int *) bf = (int) 0;
+  *(int*)bf = (int)0;
 
   // update the current state
   // however, save the old value in the 'reverse' message
   SWAP(&(s->value), &(in_msg->contents));
 
   // handle the message
-  switch (in_msg->type) {
-    case HELLO :
-    {
-      s->rcvd_count_H++;
-      break;
-    }
-    case GOODBYE :
-    {
-      s->rcvd_count_G++;
-      break;
-    }
-    default :
-      printf("Unhandeled forward message type %d\n", in_msg->type);
-  }
+  switch(s->type)
+  {
+    case COMMAND_CENTER:
+      switch (in_msg->type)
+      {
+        case RECEIVED:
+          ++s->got_msgs_RECEIVED; 
+          break;
+        case EXECUTED:
+          ++s->got_msgs_EXECUTED; 
+          break;
+        case INIT:
+          ++s->got_msgs_INIT; 
+          break;
+        default:
+          printf("Unhandeled forward message type %d\n", in_msg->type);
+      }
 
-  tw_event *e = tw_event_new(self, 1, lp);
-  message *msg = tw_event_data(e);
-  //# choose message type
-  if (s->type == HELLO_) {
-    msg->type = HELLO;
-  } else {
-    msg->type = GOODBYE;
-  }
-  msg->contents = tw_rand_unif(lp->rng);
-  msg->sender = self;
-  tw_event_send(e);
+      if (in_msg->type != EXECUTED) {
+          if      (dest == 1) dest = 2;
+          else if (dest == 2) dest = 1;
+          else abort();
+          
+          tw_event* cc_e = tw_event_new(dest, 1, lp);
+          message* cc_msg = tw_event_data(cc_e);
+         
+          cc_msg->type = MOVE;
+          ++s->sent_msgs_MOVE;
+          
+          cc_msg->contents = tw_rand_unif(lp->rng);
+          cc_msg->sender = self;
+          tw_event_send(cc_e);
+      }
+
+      break;
+
+    case ROBOT:
+      switch (in_msg->type)
+      {
+        case ROTATE_LEFT:
+          ++s->got_msgs_ROTATE_LEFT; 
+          break;
+        case ROTATE_RIGHT:
+          ++s->got_msgs_ROTATE_RIGHT; 
+          break;
+        case MOVE: 
+          ++s->got_msgs_MOVE; 
+          struct cell dest_cell = {-1, -1, -1};
+          struct robot* This = &Robots.data[self-1];
+          switch(This->is_facing)         
+          {
+              case UP:
+                  assert(This->y - 1 >= 0);
+                  dest_cell.x     = This->x    ;
+                  dest_cell.y     = This->y - 1;
+                  break;
+              case DOWN:
+                  assert(This->y + 1 <= storage.height - 1);
+                  dest_cell.x     = This->x    ;
+                  dest_cell.y     = This->y + 1;
+                  break;
+              case LEFT:
+                  assert(This->x - 1 >= 0);
+                  dest_cell.x     = This->x - 1;
+                  dest_cell.y     = This->y    ;
+                  break;    
+              case RIGHT:
+                  assert(This->x + 1 <= storage.length - 1);
+                  dest_cell.x     = This->x + 1;
+                  dest_cell.y     = This->y    ;
+                  break;
+          }
+
+          dest_cell.value = storage.data[dest_cell.y][dest_cell.x];
+
+          switch(dest_cell.value)
+          {
+              case CELL_EMPTY:
+                  storage.data[dest_cell.y][dest_cell.x] = This->is_facing;
+                  storage.data[This->y][This->x]         = CELL_EMPTY;
+                  This->x = dest_cell.x;
+                  This->y = dest_cell.y;
+                  is_executed = TRUE;
+                  PrintMap();
+                  RobotsPrint();
+                  break;
+              case CELL_WALL:
+                  break;
+              case CELL_ROBOT_UP:
+                  ;
+              case CELL_ROBOT_DOWN:
+                  ;
+              case CELL_ROBOT_LEFT:
+                  ;
+              case CELL_ROBOT_RIGHT:
+                  { 
+                  tw_event* r_e_move   = tw_event_new(self, 1, lp);
+                  message* r_msg_move  = tw_event_data(r_e_move);
+                  r_msg_move->type     = MOVE;
+                  r_msg_move->contents = tw_rand_unif(lp->rng);
+                  r_msg_move->sender   = self;
+                  tw_event_send(r_e_move);
+                  ++s->sent_msgs_MOVE;
+                  break;
+                  }
+          }
+
+          break;
+        case BOX_GRAB:
+          ++s->got_msgs_BOX_GRAB; 
+          break;
+        case BOX_DROP:
+          ++s->got_msgs_BOX_DROP; 
+          break;
+        case INIT:
+          ++s->got_msgs_INIT; 
+          break;    
+        default:
+          printf("Unhandeled forward message type %d\n", in_msg->type);
+      }
+
+      if (in_msg->sender == 0) //the message came from the command center
+                               //so it's not INIT
+      {
+        tw_event* r_e1 = tw_event_new(0, 1, lp); // COMMAND_CENTER's gid is 0
+        message* r_msg1 = tw_event_data(r_e1);
+        r_msg1->type = RECEIVED;
+        r_msg1->contents = tw_rand_unif(lp->rng);
+        r_msg1->sender = self;
+        tw_event_send(r_e1);
+        ++s->sent_msgs_RECEIVED;
+
+        if (is_executed == TRUE) {
+            tw_event* r_e2 = tw_event_new(0, 2, lp); // COMMAND_CENTER's gid is 0
+            message* r_msg2 = tw_event_data(r_e2);
+            r_msg2->type = EXECUTED;
+            r_msg2->contents = tw_rand_unif(lp->rng);
+            r_msg2->sender = self;
+            tw_event_send(r_e2);
+            ++s->sent_msgs_EXECUTED;
+        }
+
+      }
+
+      break;
+   } 
 }
 
 //Reverse Event Handler
 void model_event_reverse (state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
-  int self = lp->gid;
+/*  int self = lp->gid;
 
   // undo the state update using the value stored in the 'reverse' message
   SWAP(&(s->value), &(in_msg->contents));
@@ -119,12 +265,49 @@ void model_event_reverse (state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
   }
 
   // don't forget to undo all rng calls
-  tw_rand_reverse_unif(lp->rng);
+  tw_rand_reverse_unif(lp->rng);  */
 }
 
 //report any final statistics for this LP
-void model_final (state *s, tw_lp *lp){
+void model_final (state* s, tw_lp* lp)
+{
   int self = lp->gid;
-  if      (s->type == HELLO_)   printf("%d handled %d Hello messages\n",   self, s->rcvd_count_H);
-  else if (s->type == GOODBYE_) printf("%d handled %d Goodbye messages\n", self, s->rcvd_count_G);
+  if      (s->type == COMMAND_CENTER) {
+    printf("COMMAND_CENTER: sent %d and got %d messages of type ROTATE_LEFT\n",\
+            s->sent_msgs_ROTATE_LEFT, s->got_msgs_ROTATE_LEFT); 
+    printf("                sent %d and got %d messages of type ROTATE_RIGHT\n",\
+            s->sent_msgs_ROTATE_RIGHT, s->got_msgs_ROTATE_RIGHT);
+    printf("                sent %d and got %d messages of type MOVE\n",\
+            s->sent_msgs_MOVE, s->got_msgs_MOVE);
+    printf("                sent %d and got %d messages of type BOX_GRAB\n",\
+            s->sent_msgs_BOX_GRAB, s->got_msgs_BOX_GRAB);
+    printf("                sent %d and got %d messages of type BOX_DROP\n",\
+            s->sent_msgs_BOX_DROP, s->got_msgs_BOX_DROP);
+    printf("                sent %d and got %d messages of type RECEIVED\n",\
+            s->sent_msgs_RECEIVED, s->got_msgs_RECEIVED);
+    printf("                sent %d and got %d messages of type EXECUTED\n",\
+            s->sent_msgs_EXECUTED, s->got_msgs_EXECUTED);
+    printf("                sent %d and got %d messages of type INIT\n",\
+            s->sent_msgs_INIT, s->got_msgs_INIT);
+
+  }
+  else if (s->type == ROBOT) {  
+    printf("ROBOT #%d:       sent %d and got %d messages of type ROTATE_LEFT\n",\
+            self, s->sent_msgs_ROTATE_LEFT, s->got_msgs_ROTATE_LEFT);   
+    printf("                sent %d and got %d messages of type ROTATE_RIGHT\n",\
+            s->sent_msgs_ROTATE_RIGHT, s->got_msgs_ROTATE_RIGHT);
+    printf("                sent %d and got %d messages of type MOVE\n",\
+            s->sent_msgs_MOVE, s->got_msgs_MOVE);
+    printf("                sent %d and got %d messages of type BOX_GRAB\n",\
+            s->sent_msgs_BOX_GRAB, s->got_msgs_BOX_GRAB);
+    printf("                sent %d and got %d messages of type BOX_DROP\n",\
+            s->sent_msgs_BOX_DROP, s->got_msgs_BOX_DROP);
+    printf("                sent %d and got %d messages of type RECEIVED\n",\
+            s->sent_msgs_RECEIVED, s->got_msgs_RECEIVED);
+    printf("                sent %d and got %d messages of type EXECUTED\n",\
+            s->sent_msgs_EXECUTED, s->got_msgs_EXECUTED);
+    printf("                sent %d and got %d messages of type INIT\n",\
+            s->sent_msgs_INIT, s->got_msgs_INIT);
+
+  }
 }
